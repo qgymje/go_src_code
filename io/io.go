@@ -6,6 +6,7 @@ var ErrShortWrite = errors.New("short write")
 
 var ErrShortBuffer = errors.New("short buffer")
 
+// 这是喜闻乐见的end of file标识
 var EOF = errors.New("EOF")
 
 var ErrUnexpectedEOF = errors.New("unexpected EOF")
