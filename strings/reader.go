@@ -39,6 +39,7 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 }
 
 // 实现了ReaderAt接口
+// 将底层数据流从off位置开始, 复制到b里
 func (r *Reader) ReadAt(b []byte, off int64) (n int, err error) {
 	// cannot modify state - see io.ReaderAt
 	if off < 0 { // 嗯? 等会看, good staff takes time...

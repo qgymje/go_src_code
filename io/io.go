@@ -245,7 +245,61 @@ func NewSectionReader(r ReaderAt, off int64, n int64) *SectionReader {
 //它要实现Read, Seek, ReadAt
 type SectionReader struct {
 	r     ReaderAt //为什么ReaderAt也能作为一个底层数据源?虽然名字比较怪, 但是与Reader是一样的原理,这是一个接口,可以使用任何实现了ReadAt方法的对象
-	base  int64    // base为何要和off一样的值?
+	base  int64    // base为何要和off一样的值?这就是起始偏移位置
 	off   int64
 	limit int64
 }
+
+func (s *SectionReader) Read(p []byte) (n int, err error) {
+	if s.off >= s.limit {
+		return 0, EOF
+	}
+	if max := s.limit - s.off; int64(len(p)) > max { //?
+		p = p[0:max]
+	}
+	n, err = s.r.ReadAt(p, s.off)
+	s.off += int64(n)
+	return
+}
+
+var errWhence = errors.New("Seek: invalid whence")
+var errOffset = errors.New("Seek: invalid offset")
+
+func (s *SectionReader) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	default: //这也是醉了, default放这里的原因是好看?
+		return 0, errWhence
+	case 0:
+		offset += s.base
+	case 1:
+		offset += s.off
+	case 2:
+		offset += s.limit
+	}
+	if offset < s.base {
+		return 0, errOffset
+	}
+	s.off = offset
+	return offset - s.base, nil
+}
+
+// ReadAt是一个copy操作,和Read不一样的地方, 仅仅是开始位置可以设置
+// 因此如果ReadAt的第二个参数设置为0, 它就是一个Read
+func (s *SectionReader) ReadAt(p []byte, off int64) (n int, err error) {
+	if off < 0 || off >= s.limit-s.base { //也就是说off必须在base与limit-base之间
+		return 0, EOF
+	}
+	off += s.base
+	if max := s.limit - off; int64(len(p)) > max {
+		p = p[0:max]
+		n, err = s.r.ReadAt(p, off)
+		if err == nil {
+			err = EOF
+		}
+		return n, err
+	}
+	return s.r.ReadAt(p, off)
+}
+
+// 因为limit是off + n, 就是NewSectionReader里的第三个参数的值
+func (s *SectionReader) Size() int64 { return s.limit - s.base }
