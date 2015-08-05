@@ -4,6 +4,7 @@ package strings
 import (
 	"errors"
 	"io"
+	"unicode/utf8"
 )
 
 // Reader实现了io.Reader, io.ReaderAt, io.Seeker, io.WriterTo,
@@ -11,7 +12,7 @@ import (
 type Reader struct {
 	s        string //这个就是数据源了
 	i        int64  // 当前主读到的index
-	prevRune int    // 因为rune可能会多个字节, index值会跳
+	prevRune int    // 因为rune可能会多个字节, index值会跳,默认值为-1
 }
 
 // Len返回Reader里的s没有被读取过的字节长度
@@ -75,6 +76,29 @@ func (r *Reader) UnreadByte() error {
 }
 
 // ReadRune与UnredRune同上
+func (r *Reader) ReadRune() (ch rune, size int, err error) {
+	if r.i >= int64(len(r.s)) {
+		r.prevRune = -1
+		return 0, 0, io.EOF
+	}
+	r.prevRune = int(r.i)
+	if c := r.s[r.i]; c < utf8.RuneSelf { //如果当前index指向的是一个单字节
+		r.i++
+		return rune(c), 1, nil
+	}
+	ch, size = utf8.DecodeRuneInString(r.s[r.i:]) //大约是从这个index读取下一个rune字符
+	r.i += int64(size)
+	return
+}
+
+func (r *Reader) UnreadRune() error {
+	if r.prevRune < 0 { //如果之前没有操作过ReadRune, 则要报错
+		return errors.New("strings.Reader.UnreadRune: previous operation wat not ReadRune")
+	}
+	r.i = int64(r.prevRune)
+	r.prevRune = -1
+	return nil
+}
 
 // Seek将偏移放到参数offset位置
 // whence是什么鬼?

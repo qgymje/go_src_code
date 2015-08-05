@@ -1,12 +1,15 @@
+// Package bytes实现了用于操作byte slice的方法
+// 与strings包提供的方法差不多
 package bytes
 
 import "unicode/utf8"
 
+//判断两个[]byte是否一致
 func equalPortable(a, b []byte) bool {
-	if len(a) != len(b) {
+	if len(a) != len(b) { //先判断长度是否一致
 		return false
 	}
-	for i, c := range a {
+	for i, c := range a { //在长度一致的情况下,遍历比较
 		if c != b[i] {
 			return false
 		}
@@ -14,8 +17,6 @@ func equalPortable(a, b []byte) bool {
 	return true
 }
 
-// explode splites s into a slice of UTF-8 sequences, one per Unicode character (still slices of bytes),
-// up to a maximum of n byte slices. Invalid UTF-8 sequences are chopped into individual bytes.
 func explode(s []byte, n int) [][]byte {
 	if n <= 0 {
 		n = len(s)

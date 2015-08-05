@@ -6,16 +6,13 @@ import (
 	"unicode/utf8"
 )
 
-// A reader implements the io.Reader, io.ReaderAt, io.WriterTo, io.Seeker,
-// io.BYteScanner, and io.RuneScanner interfaces by reading from a byte slice.
-// Unlike a Buffer, a Reader is read-only and supports seeking.
+// 这个Reader与strings.Reader十分像,几乎就是一样的, 只是底层的数据s的类型不一样,一个是[]byte, 一个是string
 type Reader struct {
 	s        []byte
 	i        int64
 	prevRune int
 }
 
-// Len returns the number of bytes of the unread portion of the slice
 // 注意这里是unread的部分
 func (r *Reader) Len() int {
 	if r.i >= int64(len(r.s)) {
@@ -77,9 +74,9 @@ func (r *Reader) ReadRune() (ch rune, size int, err error) {
 		return 0, 0, io.EOF
 	}
 	r.prevRune = int(r.i)
-	if c := r.s[r.i]; c < utf8.RuneSelf {
+	if c := r.s[r.i]; c < utf8.RuneSelf { //utf8.RuneSelf为0x80,小于此值, 说明是单字节
 		r.i++
-		return rune(c), 1, nil
+		return rune(c), 1, nil //将c转为rune类型
 	}
 	ch, size = utf8.DecodeRune(r.s[r.i:])
 	r.i += int64(size)
