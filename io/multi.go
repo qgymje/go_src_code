@@ -1,32 +1,28 @@
 package io
 
+// 从名字上来看就是多个Reader的集合, 问题是这有什么卵用?
 type multiReader struct {
 	readers []Reader
 }
 
+// 和普通Read比, 外面套了一层for
 func (mr *multiReader) Read(p []byte) (n int, err error) {
-	for len(mr.readers) > 0 {
+	for len(mr.readers) > 0 { //此处使用for
 		n, err = mr.readers[0].Read(p)
 		if n > 0 || err != EOF {
 			if err == EOF {
-				// Don't return EOF yet. There may be more bytes
-				// in the remaining readers.
 				err = nil
 			}
 			return
 		}
-		mr.readers = mr.readers[1:]
+		mr.readers = mr.readers[1:] //这个操作可以看作简单的shift操作
 	}
 	return 0, EOF
 }
 
-// MultiReader returns a Reader that's the logical concatenation of
-// the provided input readers. They're read sequentially. Once all
-// inputs have returned EOF, Read will return EOF. If any of the readers
-// return a non-nil, non-EOF error, Read will return that error.
 func MultiReader(readers ...Reader) Reader {
 	r := make([]Reader, len(readers))
-	copy(r, readers)
+	copy(r, readers) // ...Reader是slice的语法糖
 	return &multiReader{r}
 }
 
@@ -34,8 +30,9 @@ type multiWriter struct {
 	writers []Writer
 }
 
+// 将多个multiWriter的数据写到p里去, 汇总数据流
 func (t *multiWriter) Write(p []byte) (n int, err error) {
-	for _, w := range t.writers {
+	for _, w := range t.writers { //此处为何不使用for?
 		n, err = w.Write(p)
 		if err != nil {
 			return
