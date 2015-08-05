@@ -129,6 +129,123 @@ type RuneScanner interface {
 	UnreadRune() error
 }
 
+//这是一个私有接口
 type stringWriter interface {
 	WriteString(s string) (n int, err error)
+}
+
+//将s写进实现Writer接口的对象里
+func WriteString(w Writer, s string) (n int, err error) {
+	if sw, ok := w.(stringWriter); ok { //接口的断言,将接口转为对象
+		return sw.WriteString(s)
+	}
+	return w.Write([]byte(s))
+}
+
+// 每次看到使用接口做参数的函数/方法, 都很难用语言表达, 只能说实现Reader接口的对象, 如果直接说Reader对象, 似乎也对, 但忽略了它是接口参数的事实
+// 但参数还是使用接口类型好,因为灵活, 不写死,面向接口,抽象程度高
+// 从实现Reader接口的对象的底层数据流里读取min个字节, 复制到buf里
+func ReadAtLeast(r Reader, buf []byte, min int) (n int, err error) {
+	if len(buf) < min {
+		return 0, ErrShortBuffer //对参数进行基本的判断, 这种可能预料到的错误, 只使用error即可, 不必非要弄个excpetion
+	}
+	for n < min && err == nil { //n初始化为0, err初始化为nil
+		var nn int
+		nn, err = r.Read(buf[n:])
+		n += nn
+	}
+	if n >= min {
+		err = nil
+	} else if n > 0 && err == EOF {
+		err = ErrUnexpectedEOF
+	}
+	return
+}
+
+// 将buf读满, 不含糊?
+func ReadFull(r Reader, buf []byte) (n int, err error) {
+	return ReadAtLeast(r, buf, len(buf)) //len(buf)可能是0
+}
+
+// copy的第一个参数都是dst,第二个参数是src
+func CopyN(dst Writer, src Reader, n int64) (written int64, err error) {
+	written, err = Copy(dst, LimitReader(src, n)) //Reader被写成了LimitedReader
+	if written == n {
+		return n, nil
+	}
+	if written < n && err == nil {
+		err = EOF
+	}
+	return
+}
+
+func Copy(dst Writer, src Reader) (written int64, err error) {
+	if wt, ok := src.(WriterTo); ok { //wt指writeTo?应该是wirter type
+		return wt.WriteTo(dst)
+	}
+	if rt, ok := dst.(ReaderFrom); ok { //这样看上去很灵活啊
+		return rt.ReadFrom(src)
+	}
+	buf := make([]byte, 32*1024) //默认32kb, 这么看起来一个byte slice是很廉价的
+	for {
+		nr, er := src.Read(buf) //实现了Reader接口就有Read方法
+		if nr > 0 {
+			nw, ew := dst.Write(buf[0:nr]) //实现了Writer接口就有Write方法
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if ew != nil { //如果写入出错了, 就退了吧
+				err = ew
+				break
+			}
+			if nr != nw { //如果读取的长度与写入的长度不一致
+				err = ErrShortWrite
+				break
+			}
+			if err == EOF {
+				break
+			}
+			if er != nil {
+				err = er
+				break
+			}
+		}
+	}
+	return written, err
+}
+
+// 做为一个函数, 取名尽量往动词取
+func LimitReader(r Reader, n int64) Reader { return &LimitedReader{r, n} }
+
+//作为一个类型, 是一个名词, 取名尽量向描述方向取
+// 它是从0到N到
+type LimitedReader struct {
+	R Reader // underlying reader
+	N int64  // max bytes remaining
+}
+
+// 覆写Reader里带的Read方法, 至少是包装一下
+func (l *LimitedReader) Read(p []byte) (n int, err error) {
+	if l.N <= 0 {
+		return 0, EOF //上来还是对参数的判断,将预料到的错误检查出来, 而不是都用鬼畜的exception
+	}
+	if int64(len(p)) > l.N {
+		p = p[0:l.N]
+	}
+	n, err = l.R.Read(p)
+	l.N -= int64(n)
+	return
+}
+
+// off指seek的位置, n指长度
+func NewSectionReader(r ReaderAt, off int64, n int64) *SectionReader {
+	return &SectionReader{r, off, off, off + n}
+}
+
+//它要实现Read, Seek, ReadAt
+type SectionReader struct {
+	r     ReaderAt //为什么ReaderAt也能作为一个底层数据源?虽然名字比较怪, 但是与Reader是一样的原理,这是一个接口,可以使用任何实现了ReadAt方法的对象
+	base  int64    // base为何要和off一样的值?
+	off   int64
+	limit int64
 }
