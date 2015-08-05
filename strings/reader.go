@@ -38,6 +38,7 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 	return
 }
 
+// 实现了ReaderAt接口
 func (r *Reader) ReadAt(b []byte, off int64) (n int, err error) {
 	// cannot modify state - see io.ReaderAt
 	if off < 0 { // 嗯? 等会看, good staff takes time...
@@ -122,7 +123,7 @@ func (r *Reader) Seek(offset int64, whence int) (int64, error) {
 	return abs, nil
 }
 
-// WriteTo
+// WriteTo 将底层数据流写到实现了io.Writer的对象的底层数据流中
 func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	r.prevRune = -1
 	if r.i >= int64(len(r.s)) { //说明数据出错了?
