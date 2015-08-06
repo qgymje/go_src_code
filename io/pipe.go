@@ -5,49 +5,51 @@ import (
 	"sync"
 )
 
-// ErrClosedPipe is the error used for read or wirte operations on a closed pipe.
-var ErrClosedPipe = errors.New("io: read/write on closed pipe")
+var ErrClosePipe = errors.New("io: read/write on closed pipe")
 
-type pipeResult struct {
+type pipeResult struct { //似乎这个结构体没有被调用
 	n   int
 	err error
 }
 
-// A pipe is the shared pipe structure underlying PipeReader and PipeWriter.
+// pipe就是一个管道, 想像成自来水管道, 流式体验
+// 双向全时管道?
+// 管道连接两头, 一头输入, 一头输出
+// 这个对象是最重要的, 公开的方法都是其方法的包装
 type pipe struct {
-	rl    sync.Mutex // gates readers one at a time
-	wl    sync.Mutex // gates writers one at a time
-	l     sync.Mutex // protects remaining fields
-	data  []byte     // data remaining in pending write
-	rwait sync.Cond  // waiting reader
-	wwait sync.Cond  // waiting writer
-	rerr  error      // if reader closed, error to give writes
-	werr  error      // if writer closed, error to give reads
+	rl    sync.Mutex //rl指的是readers lock
+	wl    sync.Mutex // wl指的是writers lock
+	l     sync.Mutex // 保护剩余的字段
+	data  []byte     //在管道中的数据
+	rwait sync.Cond
+	wwait sync.Cond
+	rerr  error
+	werr  error
 }
 
 func (p *pipe) read(b []byte) (n int, err error) {
-	p.rl.Lock()
+	p.rl.Lock() // 同一时间只能有一个reader工作
 	defer p.rl.Unlock()
 
-	p.l.Lock()
-	defer p.l.Unlock()
+	p.l.Lock()   //下部分操作都被锁起来
+	p.l.Unlock() //记得要解锁
 	for {
-		if p.rerr != nil {
-			return 0, ErrClosedPipe
+		if p.rerr != nil { //如果Reader有错误
+			return 0, ErrClosePipe
 		}
-		if p.data != nil {
+		if p.data != nil { //如果pipe里已经流进了一部分数据
 			break
 		}
 		if p.werr != nil {
 			return 0, p.werr
 		}
-		p.rwait.Wait()
+		p.rwait.Wait() //写等
 	}
-	n = copy(b, p.data)
-	p.data = p.data[n:]
-	if len(p.data) == 0 {
+	n = copy(b, p.data)   //将管道里的数据复制到参数b里
+	p.data = p.data[n:]   //将已经读取的字节清除
+	if len(p.data) == 0 { //如果管道里的数据被读完了
 		p.data = nil
-		p.wwait.Signal()
+		p.wwait.Signal() //这是神马意思
 	}
 	return
 }
@@ -55,21 +57,21 @@ func (p *pipe) read(b []byte) (n int, err error) {
 var zero [0]byte
 
 func (p *pipe) write(b []byte) (n int, err error) {
-	if b == nil {
+	if b == nil { //pipe使用nil来表示当前不可用
 		b = zero[:]
 	}
 
 	p.wl.Lock()
-	defer p.wl.Unlock()
+	defer p.l.Unlock()
 
 	p.l.Lock()
 	defer p.l.Unlock()
-	if p.werr != nil {
-		err = ErrClosedPipe
+	if p.werr != nil { //如果Writer有错误
+		err = ErrClosePipe
 		return
 	}
-	p.data = b
-	p.rwait.Signal()
+	p.data = b       //不理解
+	p.rwait.Signal() //不理解
 	for {
 		if p.data == nil {
 			break
@@ -79,76 +81,11 @@ func (p *pipe) write(b []byte) (n int, err error) {
 			break
 		}
 		if p.werr != nil {
-			err = ErrClosedPipe
+			err = ErrClosePipe
 		}
 		p.wwait.Wait()
 	}
-	n = len(b) - len(p.data)
+	n = len(b) - len(p.data) //什么意思
 	p.data = nil
 	return
-}
-
-func (p *pipe) rclose(err error) {
-	if err == nil {
-		err = ErrClosedPipe
-	}
-	p.l.Lock()
-	defer p.l.Unlock()
-	p.rerr = err
-	p.rwait.Signal()
-	p.wwait.Signal()
-}
-
-func (p *pipe) wclose(err error) {
-	if err == nil {
-		err = EOF
-	}
-	p.l.Lock()
-	defer p.l.Unlock()
-	p.werr = err
-	p.rwait.Signal()
-	p.wwait.Signal()
-}
-
-type PipeReader struct {
-	p *pipe
-}
-
-func (r *PipeReader) Read(data []byte) (n int, err error) {
-	return r.p.read(data)
-}
-
-func (r *PipeReader) Close() error {
-	return r.CloseWithError(nil)
-}
-
-func (r *PipeReader) CloseWithError(err error) error {
-	r.p.rclose(err)
-	return nil
-}
-
-type PipeWriter struct {
-	p *pipe
-}
-
-func (w *PipeWriter) Write(data []byte) (n int, err error) {
-	return w.p.write(data)
-}
-
-func (w *PipeWriter) Close() error {
-	return w.CloseWithError(nil)
-}
-
-func (w *PipeWriter) CloseWithError(err error) error {
-	w.p.wclose(err)
-	return nil
-}
-
-func Pipe() (*PipeReader, *PipeWriter) {
-	p := new(pipe)
-	p.rwait.L = &p.l
-	p.wwait.L = &p.l
-	r := &PipeReader{p}
-	w := &PipeWriter{p}
-	return r, w
 }
