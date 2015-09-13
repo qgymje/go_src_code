@@ -6,19 +6,14 @@ import (
 	"unicode/utf8"
 )
 
+// 这个Reader与strings.Reader十分像,几乎就是一样的, 只是底层的数据s的类型不一样,一个是[]byte, 一个是string
 type Reader struct {
-	s        []byte // the underlying s, 在初始化的时候是被赋值的
+	s        []byte
 	i        int64
 	prevRune int
 }
 
-// 将外部的b当作底层的s
-func NewReader(b []byte) *Reader {
-	return &Reader{b, 0, -1}
-}
-
-// 获取为读取的s的长度
-// 一个Len通常返回int?
+// 注意这里是unread的部分
 func (r *Reader) Len() int {
 	if r.i >= int64(len(r.s)) {
 		return 0
@@ -26,11 +21,6 @@ func (r *Reader) Len() int {
 	return int(int64(len(r.s)) - r.i)
 }
 
-func (r *Reader) Size() int64 {
-	return int64(len(r.s))
-}
-
-// 将NewReader参数传过来的数据放到这里的参数里
 func (r *Reader) Read(b []byte) (n int, err error) {
 	if len(b) == 0 {
 		return 0, nil
@@ -39,17 +29,15 @@ func (r *Reader) Read(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	r.prevRune = -1
-	// copy(dst, src)
 	n = copy(b, r.s[r.i:])
-	r.i += int64(n) //不直接操作s, 而是操作index
+	r.i += int64(n)
 	return
 }
 
-// ReadAt比Read多一个可以指定开始位置的读取,但index不发生变化
-func (r *Reader) ReadAt(b []byte, off int64) (n int, err error) {
+func (r *Reader) ReaderAt(b []byte, off int64) (n int, err error) {
 	if off < 0 {
-		// package.sturct.method: xxx
-		return 0, errors.New("bytes.Reader.ReadAt: negative offset")
+		// 这样返回错误最好, 标示是哪个模块的哪个结构的哪个方法
+		return 0, errors.New("bytes.Reader.ReaderAt: negative offset")
 	}
 	if off >= int64(len(r.s)) {
 		return 0, io.EOF
@@ -61,7 +49,6 @@ func (r *Reader) ReadAt(b []byte, off int64) (n int, err error) {
 	return
 }
 
-// 实现了ByteReader接口
 func (r *Reader) ReadByte() (b byte, err error) {
 	r.prevRune = -1
 	if r.i >= int64(len(r.s)) {
@@ -82,14 +69,14 @@ func (r *Reader) UnreadByte() error {
 }
 
 func (r *Reader) ReadRune() (ch rune, size int, err error) {
-	if r.i >= int64(len(r.s)) {
+	if r.i > -int64(len(r.s)) {
 		r.prevRune = -1
 		return 0, 0, io.EOF
 	}
 	r.prevRune = int(r.i)
-	if c := r.s[r.i]; c < utf8.RuneSelf {
+	if c := r.s[r.i]; c < utf8.RuneSelf { //utf8.RuneSelf为0x80,小于此值, 说明是单字节
 		r.i++
-		return rune(c), 1, nil
+		return rune(c), 1, nil //将c转为rune类型
 	}
 	ch, size = utf8.DecodeRune(r.s[r.i:])
 	r.i += int64(size)
@@ -98,14 +85,13 @@ func (r *Reader) ReadRune() (ch rune, size int, err error) {
 
 func (r *Reader) UnreadRune() error {
 	if r.prevRune < 0 {
-		return errors.New("bytes.Reader.UnreadRune: previous operation wat not ReadRune")
+		return errors.New("bytes.Reader.UnreadRune: previous operations wat not ReadRune")
 	}
 	r.i = int64(r.prevRune)
 	r.prevRune = -1
 	return nil
 }
 
-// 变动index偏移, 为下一次读取设置好位置
 func (r *Reader) Seek(offset int64, whence int) (int64, error) {
 	r.prevRune = -1
 	var abs int64
@@ -131,15 +117,17 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	if r.i >= int64(len(r.s)) {
 		return 0, nil
 	}
-	b := r.s[r.i:] //b是一个s的从i开始的slice
+	b := r.s[r.i:]
 	m, err := w.Write(b)
 	if m > len(b) {
 		panic("bytes.Reader.WriteTo: invalid Write count")
 	}
-	r.i += int64(m) //偏移指针, 表示s被写入到io.Writer对象中了
+	r.i += int64(m)
 	n = int64(m)
 	if m != len(b) && err == nil {
 		err = io.ErrShortWrite
 	}
 	return
 }
+
+func NewReader(b []byte) *Reader { return &Reader{b, 0, -1} }
