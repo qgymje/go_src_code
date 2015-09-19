@@ -11,7 +11,7 @@ type Buffer struct {
 	buf       []byte //底层数据, buf[off : len(buf)]
 	off       int    //read at &buf[off], write at &buf[len(buf)]理解这句话就理解了buffer的原理
 	runeBytes [utf8.UTFMax]byte
-	boostrap  [64]byte
+	bootstrap [64]byte
 	lastRead  readOp
 }
 
@@ -57,5 +57,41 @@ func (b *Buffer) Reset() { b.Truncate(0) }
 
 // 这个就是Buffer的核心逻辑了
 func (b *Buffer) grow(n int) int {
+	m := b.Len()
+	if m == 0 && b.off != 0 {
+		b.Truncate(0)
+	}
+	if len(b.buf)+n > cap(b.buf) {
+		var buf []byte
+		if b.buf == nil && n <= len(b.bootstrap) {
+			buf = b.bootstrap[0:]
+		} else if m+n <= cap(b.buf)/2 {
+			copy(b.buf[:], b.buf[b.off:])
+			buf = b.buf[:m]
+		} else {
+			buf = makeSlice(2*cap(b.buf) + n)
+			copy(buf, b.buf[b.off:])
+		}
+		b.buf = buf
+		b.off = 0
+	}
+	b.buf = b.buf[0 : b.off+m+n]
+	return b.off + m
+}
 
+func (b *Buffer) Grow(n int) {
+	if n < 0 {
+		panic("bytes.Buffer.Grow: negative count")
+	}
+	m := b.grow(n)
+	b.buf = b.buf[0:m]
+}
+
+func makeSlice(n int) []byte {
+	defer func() {
+		if recover() != nil {
+			panic(ErrTooLarge)
+		}
+	}()
+	return make([]byte, n)
 }
