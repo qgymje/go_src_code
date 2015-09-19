@@ -86,12 +86,3 @@ func (b *Buffer) Grow(n int) {
 	m := b.grow(n)
 	b.buf = b.buf[0:m]
 }
-
-func makeSlice(n int) []byte {
-	defer func() {
-		if recover() != nil {
-			panic(ErrTooLarge)
-		}
-	}()
-	return make([]byte, n)
-}
