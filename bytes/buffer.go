@@ -2,7 +2,6 @@ package bytes
 
 import (
 	"errors"
-	"io"
 	"unicode/utf8"
 )
 
@@ -86,22 +85,4 @@ func (b *Buffer) Grow(n int) {
 	}
 	m := b.grow(n)
 	b.buf = b.buf[0:m]
-}
-
-func (b *Buffer) Write(p []byte) (n int, err error) {
-	b.lastRead = opInvalid
-	m := b.grow(len(p))
-	return copy(b.buf[m:], p), nil
-}
-
-func (b *Buffer) WriteString(s string) (n int, err error) {
-	b.lastRead = opInvalid
-	m := b.grow(len(s))
-	return copy(b.buf[m:], s), nil
-}
-
-const MinRead = 512
-
-func (b *Buffer) ReadFrom(r io.Reader) (n int64, err error) {
-
 }
