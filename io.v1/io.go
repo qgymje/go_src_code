@@ -149,7 +149,7 @@ func ReadAtLeast(r Reader, buf []byte, min int) (n int, err error) {
 	if len(buf) < min {
 		return 0, ErrShortBuffer //对参数进行基本的判断, 这种可能预料到的错误, 只使用error即可, 不必非要弄个excpetion
 	}
-	for n < min && err == nil { //n初始化为0, err初始化为nil
+	for n < min && err == nil { //n初始化为0, err初始化为nil, 循环读
 		var nn int
 		nn, err = r.Read(buf[n:])
 		n += nn
@@ -169,7 +169,7 @@ func ReadFull(r Reader, buf []byte) (n int, err error) {
 
 // copy的第一个参数都是dst,第二个参数是src
 func CopyN(dst Writer, src Reader, n int64) (written int64, err error) {
-	written, err = Copy(dst, LimitReader(src, n)) //Reader被写成了LimitedReader
+	written, err = Copy(dst, LimitReader(src, n)) //Reader被写成了LimitedReader, 但依然是Reader
 	if written == n {
 		return n, nil
 	}
