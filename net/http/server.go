@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -22,14 +23,10 @@ type Flusher interface {
 	Flush()
 }
 
-type Handler interface {
-	ServeHTTP(ResponseWriter, *Request)
-}
-
 type HandlerFunc func(ResponseWriter, *Request)
 
 type ServeMux struct {
-	mu    sync.RWMutext
+	mu    sync.RWMutex
 	m     map[string]muxEntry
 	hosts bool
 }
